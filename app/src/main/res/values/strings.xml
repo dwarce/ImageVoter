@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ImageVoter</string>
+    <string name="playGame">Play the game</string>
+    <string name="tutorial">View tutorial</string>
+</resources>
