@@ -2,12 +2,14 @@ package com.example.razpe.imagevoter;
 
 import java.io.InputStream;
 
+import android.graphics.Point;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -22,9 +24,13 @@ public class Voter extends Activity implements View.OnTouchListener {
     ImageView controller;
     ProgressDialog mProgressDialog;
     private float initialX, initialY = 0.0f;
+    private float endX, endY = 0.0f;
     private float x, y = 0.0f;
     private boolean moving;
     private boolean flag = false;
+    private int confidence = 0;
+    private boolean isReal;
+
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -33,8 +39,6 @@ public class Voter extends Activity implements View.OnTouchListener {
         image =  findViewById(R.id.imageView);
         controller = findViewById(R.id.imageView2);
         controller.setOnTouchListener(this);
-
-
         new DownloadImage().execute(URL);
     }
 
@@ -55,14 +59,24 @@ public class Voter extends Activity implements View.OnTouchListener {
                 if(this.moving){
                     x = motionEvent.getX();
                     y = motionEvent.getY();
-                    controller.setX(x);
-                    controller.setY(y);
+                    controller.setX(x - controller.getWidth()/2);
+                    controller.setY(y - controller.getHeight()/2);
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                this.endX = motionEvent.getX();
+                this.endY = motionEvent.getY();
+                this.confidence = (int) Math.ceil((this.initialY - this.endY) / initialY  *100);
                 this.moving = false;
                 controller.setX(this.initialX);
                 controller.setY(this.initialY);
+
+                if(this.endX > this.initialX) {
+                    this.isReal = true;
+                    Toast.makeText(Voter.this, "REAL, " + confidence +"% " + initialY +" " + Math.abs(endY), Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(Voter.this, "FAKE, " + confidence +"%", Toast.LENGTH_SHORT).show();
+                }
                 break;
         }
 
