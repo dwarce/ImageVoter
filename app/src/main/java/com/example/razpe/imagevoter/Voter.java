@@ -9,11 +9,13 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.text.Layout;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
 
@@ -30,6 +32,7 @@ public class Voter extends Activity implements View.OnTouchListener {
     private boolean flag = false;
     private int confidence = 0;
     private boolean isReal;
+    private boolean controllerTouched = false;
 
 
     @Override
@@ -38,7 +41,12 @@ public class Voter extends Activity implements View.OnTouchListener {
         setContentView(R.layout.activity_voter);
         image =  findViewById(R.id.imageView);
         controller = findViewById(R.id.imageView2);
-        controller.setOnTouchListener(this);
+        controller.getX();
+        controller.getY();
+
+        FrameLayout layout = findViewById(R.id.frameLayout);
+        layout.setOnTouchListener(this);
+        //controller.setOnTouchListener(this);
         new DownloadImage().execute(URL);
     }
 
@@ -46,6 +54,12 @@ public class Voter extends Activity implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View view, MotionEvent motionEvent) {
+        if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+            if(motionEvent.getX() > controller.getLeft() && motionEvent.getX() < controller.getRight() && motionEvent.getY() > controller.getTop()){
+                this.controllerTouched = true;
+               // Toast.makeText(Voter.this, motionEvent.getX() + "," + motionEvent.getY() + ", " + controller.getTop() + "-" + controller.getBottom(), Toast.LENGTH_SHORT).show();
+            }
+        }
         switch (motionEvent.getAction()){
             case MotionEvent.ACTION_DOWN:
                 if(!this.flag) {
@@ -56,7 +70,7 @@ public class Voter extends Activity implements View.OnTouchListener {
                 this.moving = true;
                 break;
             case MotionEvent.ACTION_MOVE:
-                if(this.moving){
+                if(this.moving && this.controllerTouched){
                     x = motionEvent.getX();
                     y = motionEvent.getY();
                     controller.setX(x - controller.getWidth()/2);
@@ -68,15 +82,17 @@ public class Voter extends Activity implements View.OnTouchListener {
                 this.endY = motionEvent.getY();
                 this.confidence = (int) Math.ceil((this.initialY - this.endY) / initialY  *100);
                 this.moving = false;
-                controller.setX(this.initialX);
-                controller.setY(this.initialY);
 
                 if(this.endX > this.initialX) {
                     this.isReal = true;
-                    Toast.makeText(Voter.this, "REAL, " + confidence +"% " + initialY +" " + Math.abs(endY), Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(Voter.this, "FAKE, " + confidence +"%", Toast.LENGTH_SHORT).show();
+                    this.isReal = false;
                 }
+                Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
+                controller.setX(this.initialX);
+                controller.setY(this.initialY);
+
+                this.controllerTouched = false;
                 break;
         }
 
