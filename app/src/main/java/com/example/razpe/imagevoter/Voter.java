@@ -88,7 +88,10 @@ public class Voter extends Activity implements View.OnTouchListener {
                 } else {
                     this.isReal = false;
                 }
-                Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
+                if(this.controllerTouched){
+                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
+
+                }
                 controller.setX(this.initialX);
                 controller.setY(this.initialY);
 
