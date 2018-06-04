@@ -1,6 +1,13 @@
 package com.example.razpe.imagevoter;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 
 import android.graphics.Point;
 import android.os.AsyncTask;
@@ -33,6 +40,8 @@ public class Voter extends Activity implements View.OnTouchListener {
     private int confidence = 0;
     private boolean isReal;
     private boolean controllerTouched = false;
+    public static String[] urls;
+    public static int urlIndex = 0;
 
 
     @Override
@@ -89,7 +98,7 @@ public class Voter extends Activity implements View.OnTouchListener {
                     this.isReal = false;
                 }
                 if(this.controllerTouched){
-                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence + "\n" + urls, Toast.LENGTH_SHORT).show();
 
                 }
                 controller.setX(this.initialX);
@@ -103,6 +112,7 @@ public class Voter extends Activity implements View.OnTouchListener {
     }
 
     private class DownloadImage extends AsyncTask<String, Void, Bitmap> {
+        private String urls;
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
@@ -115,12 +125,35 @@ public class Voter extends Activity implements View.OnTouchListener {
 
         @Override
         protected Bitmap doInBackground(String... URL) {
+            try {
+
+                URL url = new URL("http://medicinina.me/augmented/getImage.php");
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                }
+                Voter.urls = total.toString().split(" ");
+
+                //Toast.makeText(Voter.this, total, Toast.LENGTH_SHORT);
+
+            } catch (MalformedURLException e ) {
+                e.printStackTrace();
+            } catch (IOException e ) {
+                e.printStackTrace();
+            }
 
             String imageURL = URL[0];
 
             Bitmap bitmap = null;
             try {
-                InputStream input = new java.net.URL(imageURL).openStream();
+                InputStream input = new java.net.URL(Voter.urls[Voter.urlIndex]).openStream();
                 bitmap = BitmapFactory.decodeStream(input);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -131,6 +164,7 @@ public class Voter extends Activity implements View.OnTouchListener {
         @Override
         protected void onPostExecute(Bitmap result) {
             image.setImageBitmap(result);
+            Toast.makeText(Voter.this, this.urls, Toast.LENGTH_SHORT);
             mProgressDialog.dismiss();
         }
     }
