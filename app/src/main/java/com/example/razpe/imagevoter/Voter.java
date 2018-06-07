@@ -8,15 +8,21 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 import android.graphics.Point;
+import android.net.http.RequestQueue;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.support.v7.app.AlertDialog;
 import android.text.Layout;
+import android.util.JsonReader;
+import android.util.Log;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
@@ -25,6 +31,13 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
+
+import org.apache.http.NameValuePair;
+import org.apache.http.io.HttpMessageParser;
+import org.apache.http.message.BasicNameValuePair;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class Voter extends Activity implements View.OnTouchListener {
 
@@ -41,7 +54,14 @@ public class Voter extends Activity implements View.OnTouchListener {
     private boolean isReal;
     private boolean controllerTouched = false;
     public static String[] urls;
+    public static String[] votes;
     public static int urlIndex = 0;
+    private String imgId;
+    private String fakes;
+    private String reals;
+    private String confid;
+    public static String URL1;
+    public static boolean stopVoting = false;
 
 
     @Override
@@ -56,9 +76,9 @@ public class Voter extends Activity implements View.OnTouchListener {
         FrameLayout layout = findViewById(R.id.frameLayout);
         layout.setOnTouchListener(this);
         //controller.setOnTouchListener(this);
+        new GetVotes().execute(URL);
         new DownloadImage().execute(URL);
     }
-
 
 
     @Override
@@ -90,15 +110,33 @@ public class Voter extends Activity implements View.OnTouchListener {
                 this.endX = motionEvent.getX();
                 this.endY = motionEvent.getY();
                 this.confidence = (int) Math.ceil((this.initialY - this.endY) / initialY  *100);
+                if(this.confidence > 100) {
+                    this.confidence = 100;
+                }
+                this.confid += this.confidence;
                 this.moving = false;
 
                 if(this.endX > this.initialX) {
                     this.isReal = true;
+                    this.fakes = "0";
+                    this.reals = "1";
                 } else {
                     this.isReal = false;
+                    this.fakes = "1";
+                    this.reals = "0";
                 }
                 if(this.controllerTouched){
-                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence + "\n" + urls, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(Voter.this, "TESHT", Toast.LENGTH_SHORT).show();
+                    this.imgId = "1";
+                    this.confid = "" + this.confidence;
+                    this.URL1 = "http://medicinina.me/augmented/updateVotes.php" + "?operation=insert&imageId=" + Voter.urlIndex + "&isFake=" + this.fakes + "&isReal=" + this.reals + "&confidence=" + this.confid;
+                    System.out.println(URL1);
+                    if(!Voter.stopVoting){
+                        new GetUrlContentTask().execute(URL1);
+                        new DownloadImage().execute(URL);
+                    }
+
 
                 }
                 controller.setX(this.initialX);
@@ -112,7 +150,6 @@ public class Voter extends Activity implements View.OnTouchListener {
     }
 
     private class DownloadImage extends AsyncTask<String, Void, Bitmap> {
-        private String urls;
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
@@ -130,26 +167,23 @@ public class Voter extends Activity implements View.OnTouchListener {
                 URL url = new URL("http://medicinina.me/augmented/getImage.php");
                 HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
                 mUrlConnection.setDoInput(true);
-
                 InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
-
                 BufferedReader r = new BufferedReader(new InputStreamReader(is));
                 StringBuilder total = new StringBuilder();
+
                 String line;
                 while ((line = r.readLine()) != null) {
                     total.append(line).append('\n');
+                    System.out.println(line);
                 }
                 Voter.urls = total.toString().split(" ");
 
-                //Toast.makeText(Voter.this, total, Toast.LENGTH_SHORT);
 
             } catch (MalformedURLException e ) {
                 e.printStackTrace();
             } catch (IOException e ) {
                 e.printStackTrace();
             }
-
-            String imageURL = URL[0];
 
             Bitmap bitmap = null;
             try {
@@ -164,8 +198,88 @@ public class Voter extends Activity implements View.OnTouchListener {
         @Override
         protected void onPostExecute(Bitmap result) {
             image.setImageBitmap(result);
-            Toast.makeText(Voter.this, this.urls, Toast.LENGTH_SHORT);
             mProgressDialog.dismiss();
+            if(Voter.urlIndex < Voter.urls.length - 1 ){
+                Voter.urlIndex++;
+            } else {
+                Voter.stopVoting = true;
+            }
         }
     }
+
+    private class GetUrlContentTask extends AsyncTask<String, Integer, String> {
+        protected String doInBackground(String... urls) {
+            try {
+                URL url = new URL(urls[0]);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setDoOutput(true);
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.connect();
+                BufferedReader rd = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String content = "", line;
+                while ((line = rd.readLine()) != null) {
+                    content += line + "\n";
+                }
+                return content;
+
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+                return null;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        protected void onProgressUpdate(Integer... progress) {
+        }
+
+        protected void onPostExecute(String result) {
+            System.out.println(result);
+        }
+    }
+
+    private class GetVotes extends AsyncTask<String, Void, String> {
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+        }
+
+        @Override
+        protected String doInBackground(String... URL) {
+            String line = "";
+            try {
+
+                URL url = new URL("http://medicinina.me/augmented/GetVotesData.php");
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                    System.out.println(line);
+                }
+                Voter.urls = total.toString().split(" ");
+                System.out.println("TEST");
+                String total2 = total.substring(1, total.length()-1);
+                total2 = total2.replace("},{", "}@{" );
+                Voter.votes = total2.split("@");
+                for(int i = 0; i< votes.length; i++) {
+                    System.out.println(votes[i]);
+                }
+
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+          return line;
+        }
+    }
+
 }
