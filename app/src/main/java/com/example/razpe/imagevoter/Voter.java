@@ -8,14 +8,11 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
 
-import android.app.Fragment;
+
 import android.app.FragmentManager;
 import android.app.FragmentTransaction;
-import android.graphics.Point;
-import android.net.http.RequestQueue;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.app.Activity;
@@ -43,7 +40,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public class Voter extends Activity implements View.OnTouchListener {
+public class Voter extends Activity implements View.OnTouchListener, ResultFragment.OnFragmentInteractionListener {
 
     String URL = "https://cdn.pixabay.com/photo/2017/04/05/11/56/image-in-the-image-2204798_960_720.jpg";
     ImageView image;
@@ -67,6 +64,7 @@ public class Voter extends Activity implements View.OnTouchListener {
     public static String URL1;
     public static boolean stopVoting = false;
     private TextView textView;
+    private boolean isLast;
     public static ImageView overlayImg;
 
 
@@ -164,13 +162,47 @@ public class Voter extends Activity implements View.OnTouchListener {
                         new GetUrlContentTask().execute(URL1);
                         new DownloadImage().execute(URL);
                     }
+                    String[] URL2 = new String[]{};
+
+                    new GetSpecific().execute(URL2);
                 }
+
+                if(urlIndex == urls.length) {
+                    this.isLast = true;
+                }
+
+                Bundle newBundle = new Bundle();
+                newBundle.putBoolean("thinksIsReal", this.isReal);
+                newBundle.putInt("thinksWithConfidence", this.confidence);
+                newBundle.putInt("fakeThinkersPercent", 10);
+                newBundle.putInt("fakeThinkersConfidence", 10);
+                newBundle.putInt("realThinkersPercent", 10);
+                newBundle.putInt("realThinkersConfidence", 10);
+                newBundle.putBoolean("isActuallyReal", true);
+                newBundle.putBoolean("isLastImage", this.isLast);
+                this.showFragment(newBundle);
+
                 controller.setX(this.initialX);
                 controller.setY(this.initialY);
                 break;
         }
 
         return true;
+    }
+
+    public void showFragment(Bundle bundle) {
+        FragmentManager fragmentManager = getFragmentManager();
+        FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
+        fragmentTransaction.addToBackStack(null);
+        ResultFragment resultFragment = new ResultFragment();
+        resultFragment.setArguments(bundle);
+        fragmentTransaction.add(R.id.fragment_container, resultFragment);
+        fragmentTransaction.commit();
+    }
+
+    @Override
+    public void onFragmentInteraction(Uri uri) {
+
     }
 
     private class DownloadImage extends AsyncTask<String, Void, Bitmap> {
@@ -275,26 +307,68 @@ public class Voter extends Activity implements View.OnTouchListener {
         protected String doInBackground(String... URL) {
             String line = "";
             try {
-
                 URL url = new URL("http://medicinina.me/augmented/GetVotesData.php");
                 HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
                 mUrlConnection.setDoInput(true);
                 InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
                 BufferedReader r = new BufferedReader(new InputStreamReader(is));
                 StringBuilder total = new StringBuilder();
-
                 while ((line = r.readLine()) != null) {
                     total.append(line).append('\n');
                     System.out.println(line);
                 }
-                Voter.urls = total.toString().split(" ");
+                Voter.votes = total.toString().split(" ");
                 System.out.println("TEST");
+                System.out.println(votes.length);
                 String total2 = total.substring(1, total.length()-1);
                 total2 = total2.replace("},{", "}@{" );
                 Voter.votes = total2.split("@");
                 for(int i = 0; i< votes.length; i++) {
                     System.out.println(votes[i]);
                 }
+                JSONObject obj = new JSONObject();
+                for(int i = 0; i< votes.length; i++) {
+                    obj = new JSONObject(votes[i]);
+                    System.out.println(obj.getString("confidence"));
+                }
+
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return line;
+        }
+    }
+
+    private class GetSpecific extends AsyncTask<String, Void, String> {
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+        }
+
+        @Override
+        protected String doInBackground(String... URL) {
+            String line = "";
+            try {
+                URL url = new URL(URL[0]);
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                    System.out.println(line);
+                }
+                Voter.votes = total.toString().split(" ");
+                System.out.println("TEST");
+                // String total2 = total.substring(1, total.length()-1);
+                // total2 = total2.replace("},{", "}@{" );
+                // Voter.votes = total2.split("@");
 
             } catch (MalformedURLException e) {
                 e.printStackTrace();
@@ -302,9 +376,10 @@ public class Voter extends Activity implements View.OnTouchListener {
                 e.printStackTrace();
             }
 
-          return line;
+            return line;
         }
     }
+
 
     @Override
     public void onBackPressed() {
