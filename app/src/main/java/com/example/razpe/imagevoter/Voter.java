@@ -11,6 +11,9 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.app.Fragment;
+import android.app.FragmentManager;
+import android.app.FragmentTransaction;
 import android.graphics.Point;
 import android.net.http.RequestQueue;
 import android.os.AsyncTask;
@@ -30,6 +33,7 @@ import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.apache.http.NameValuePair;
@@ -62,6 +66,8 @@ public class Voter extends Activity implements View.OnTouchListener {
     private String confid;
     public static String URL1;
     public static boolean stopVoting = false;
+    private TextView textView;
+    public static ImageView overlayImg;
 
 
     @Override
@@ -72,7 +78,8 @@ public class Voter extends Activity implements View.OnTouchListener {
         controller = findViewById(R.id.imageView2);
         controller.getX();
         controller.getY();
-
+        this.textView = findViewById(R.id.textView);
+        this.overlayImg = findViewById(R.id.imageView4);
         FrameLayout layout = findViewById(R.id.frameLayout);
         layout.setOnTouchListener(this);
         //controller.setOnTouchListener(this);
@@ -104,14 +111,35 @@ public class Voter extends Activity implements View.OnTouchListener {
                     y = motionEvent.getY();
                     controller.setX(x - controller.getWidth()/2);
                     controller.setY(y - controller.getHeight()/2);
+                    this.endX = motionEvent.getX() - controller.getWidth()/2;
+                    this.endY = motionEvent.getY() - controller.getHeight()/2;
+                    if(this.endX > this.initialX) {
+                        this.isReal = true;
+                        this.overlayImg.setBackgroundResource(R.drawable.stamp_real);
+
+                    } else {
+                        this.isReal = false;
+                        this.overlayImg.setBackgroundResource(R.drawable.stamp_fake);
+                    }
+                    this.confidence = (int) Math.ceil((this.initialY - this.endY) / initialY  *100);
+                    if(this.confidence > 100) {
+                        this.confidence = 100;
+                    }else if(this.confidence < 0) {
+                        this.confidence = 0;
+                    }
+                    this.textView.setText("Confidence: " + this.confidence);
+
                 }
                 break;
             case MotionEvent.ACTION_UP:
-                this.endX = motionEvent.getX();
-                this.endY = motionEvent.getY();
+                this.textView.setText("");
+                this.endX = motionEvent.getX() - controller.getWidth()/2;
+                this.endY = motionEvent.getY()  - controller.getHeight()/2;
                 this.confidence = (int) Math.ceil((this.initialY - this.endY) / initialY  *100);
                 if(this.confidence > 100) {
                     this.confidence = 100;
+                }else if(this.confidence < 0) {
+                    this.confidence = 0;
                 }
                 this.confid += this.confidence;
                 this.moving = false;
@@ -136,13 +164,9 @@ public class Voter extends Activity implements View.OnTouchListener {
                         new GetUrlContentTask().execute(URL1);
                         new DownloadImage().execute(URL);
                     }
-
-
                 }
                 controller.setX(this.initialX);
                 controller.setY(this.initialY);
-
-                this.controllerTouched = false;
                 break;
         }
 
@@ -163,7 +187,6 @@ public class Voter extends Activity implements View.OnTouchListener {
         @Override
         protected Bitmap doInBackground(String... URL) {
             try {
-
                 URL url = new URL("http://medicinina.me/augmented/getImage.php");
                 HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
                 mUrlConnection.setDoInput(true);
@@ -237,6 +260,7 @@ public class Voter extends Activity implements View.OnTouchListener {
         }
 
         protected void onPostExecute(String result) {
+            Voter.overlayImg.setBackgroundResource(R.color.transparent);
             System.out.println(result);
         }
     }
@@ -282,4 +306,9 @@ public class Voter extends Activity implements View.OnTouchListener {
         }
     }
 
+    @Override
+    public void onBackPressed() {
+        Voter.urlIndex = 0;
+        super.onBackPressed();
+    }
 }
