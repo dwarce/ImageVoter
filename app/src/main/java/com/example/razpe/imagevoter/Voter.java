@@ -8,8 +8,6 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-
-
 import android.app.FragmentManager;
 import android.app.FragmentTransaction;
 import android.net.Uri;
@@ -19,26 +17,12 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.support.v7.app.AlertDialog;
-import android.text.Layout;
-import android.util.JsonReader;
-import android.util.Log;
-import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.View.OnClickListener;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import org.apache.http.NameValuePair;
-import org.apache.http.io.HttpMessageParser;
-import org.apache.http.message.BasicNameValuePair;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 public class Voter extends Activity implements View.OnTouchListener, ResultFragment.OnFragmentInteractionListener {
 
@@ -55,7 +39,6 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
     private boolean isReal;
     private boolean controllerTouched = false;
     public static String[] urls;
-    public static String[] votes;
     public static int urlIndex = 0;
     private String imgId;
     private String fakes;
@@ -65,7 +48,14 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
     public static boolean stopVoting = false;
     private TextView textView;
     private boolean isLast;
+    public static boolean fragmentOpen = false;
     public static ImageView overlayImg;
+    public static int percentOfFakes = -1;
+    public static int percentOfReals = -1;
+    public static int fakeConfidencePercent = -1;
+    public static int realConfidencePercent = -1;
+    public static int isActuallyReal = -1;
+    public static  Bitmap currentImage;
 
 
     @Override
@@ -80,18 +70,18 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
         this.overlayImg = findViewById(R.id.imageView4);
         FrameLayout layout = findViewById(R.id.frameLayout);
         layout.setOnTouchListener(this);
-        //controller.setOnTouchListener(this);
-        new GetVotes().execute(URL);
         new DownloadImage().execute(URL);
     }
 
 
     @Override
     public boolean onTouch(View view, MotionEvent motionEvent) {
+        if(this.fragmentOpen) {
+            return true;
+        }
         if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
             if(motionEvent.getX() > controller.getLeft() && motionEvent.getX() < controller.getRight() && motionEvent.getY() > controller.getTop()){
                 this.controllerTouched = true;
-               // Toast.makeText(Voter.this, motionEvent.getX() + "," + motionEvent.getY() + ", " + controller.getTop() + "-" + controller.getBottom(), Toast.LENGTH_SHORT).show();
             }
         }
         switch (motionEvent.getAction()){
@@ -152,36 +142,34 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
                     this.reals = "0";
                 }
                 if(this.controllerTouched){
-                    Toast.makeText(Voter.this, this.isReal + ", confidence: " + this.confidence, Toast.LENGTH_SHORT).show();
-                    //Toast.makeText(Voter.this, "TESHT", Toast.LENGTH_SHORT).show();
                     this.imgId = "1";
                     this.confid = "" + this.confidence;
                     this.URL1 = "http://medicinina.me/augmented/updateVotes.php" + "?operation=insert&imageId=" + Voter.urlIndex + "&isFake=" + this.fakes + "&isReal=" + this.reals + "&confidence=" + this.confid;
-                    System.out.println(URL1);
                     if(!Voter.stopVoting){
-                        new GetUrlContentTask().execute(URL1);
-                        new DownloadImage().execute(URL);
+                        new UpdateVotes().execute(URL1);
                     }
-                    String[] URL2 = new String[]{};
+                    String urlToGet = "http://medicinina.me/augmented/GetSpecificVotes.php" + "?operation=getPercentOfFake&imageId=" + Voter.urlIndex;
+                    String[] URL2 = urlToGet.split("@");
+                    new getPercentOfFakes().execute(URL2);
 
-                    new GetSpecific().execute(URL2);
+                    urlToGet = "http://medicinina.me/augmented/GetSpecificVotes.php" + "?operation=getConfidenceOfFake&imageId=" + Voter.urlIndex;
+                    URL2 = urlToGet.split("@");
+                    new getConfidenceOfFakes().execute(URL2);
+
+                    urlToGet = "http://medicinina.me/augmented/GetSpecificVotes.php" + "?operation=getConfidenceOfReal&imageId=" + Voter.urlIndex;
+                    URL2 = urlToGet.split("@");
+                    new getConfidenceOfReals().execute(URL2);
+
+                    urlToGet = "http://medicinina.me/augmented/GetSpecificVotes.php" + "?operation=checkImageReal&imageId=" + Voter.urlIndex;
+                    URL2 = urlToGet.split("@");
+                    new checkImageReal().execute(URL2);
+
                 }
-
-                if(urlIndex == urls.length) {
+                if(urlIndex == urls.length - 1) {
                     this.isLast = true;
+                    System.out.println("THIS IS LAST IMAGE");
                 }
-
-                Bundle newBundle = new Bundle();
-                newBundle.putBoolean("thinksIsReal", this.isReal);
-                newBundle.putInt("thinksWithConfidence", this.confidence);
-                newBundle.putInt("fakeThinkersPercent", 10);
-                newBundle.putInt("fakeThinkersConfidence", 10);
-                newBundle.putInt("realThinkersPercent", 10);
-                newBundle.putInt("realThinkersConfidence", 10);
-                newBundle.putBoolean("isActuallyReal", true);
-                newBundle.putBoolean("isLastImage", this.isLast);
-                this.showFragment(newBundle);
-
+                this.showFragment();
                 controller.setX(this.initialX);
                 controller.setY(this.initialY);
                 break;
@@ -190,22 +178,49 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
         return true;
     }
 
-    public void showFragment(Bundle bundle) {
-        FragmentManager fragmentManager = getFragmentManager();
-        FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
-        fragmentTransaction.addToBackStack(null);
-        ResultFragment resultFragment = new ResultFragment();
-        resultFragment.setArguments(bundle);
-        fragmentTransaction.add(R.id.fragment_container, resultFragment);
-        fragmentTransaction.commit();
+    public void showFragment() {
+        System.out.println(Voter.percentOfFakes + " " +  Voter.percentOfReals + " " + Voter.fakeConfidencePercent + " " + Voter.realConfidencePercent + " " + Voter.isActuallyReal);
+        if(Voter.percentOfFakes != -1 && Voter.percentOfReals != -1 && Voter.fakeConfidencePercent != -1 && Voter.realConfidencePercent != -1 && Voter.isActuallyReal != -1){
+            Bundle bundle = new Bundle();
+            bundle.putBoolean("thinksIsReal", this.isReal);
+            bundle.putInt("thinksWithConfidence", this.confidence);
+            bundle.putInt("fakeThinkersPercent", Voter.percentOfFakes);
+            bundle.putInt("fakeThinkersConfidence", Voter.fakeConfidencePercent);
+            bundle.putInt("realThinkersPercent", Voter.percentOfReals);
+            bundle.putInt("realThinkersConfidence", Voter.realConfidencePercent);
+            bundle.putInt("isActuallyReal", Voter.isActuallyReal);
+            bundle.putBoolean("isLastImage", this.isLast);
+            FragmentManager fragmentManager = getFragmentManager();
+            FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
+            fragmentTransaction.addToBackStack(null);
+            ResultFragment resultFragment = new ResultFragment();
+            resultFragment.setArguments(bundle);
+            fragmentTransaction.add(R.id.fragment_container, resultFragment);
+            fragmentTransaction.commit();
+            Voter.fragmentOpen = true;
+            Voter.percentOfFakes = -1;
+            Voter.percentOfReals = -1;
+            Voter.fakeConfidencePercent = -1;
+            Voter.realConfidencePercent = -1;
+            Voter.isActuallyReal = -1;
+        }
     }
 
     @Override
-    public void onFragmentInteraction(Uri uri) {
+    public void onFragmentClosed() {
+        System.out.println("FRAGMENT CLOSED, REALLY!");
+        System.out.println(Voter.urlIndex);
+        System.out.println(Voter.urls.length);
+        this.fragmentOpen = false;
+        if(this.isLast) {
+            this.finish();
+        }
 
+        new DownloadImage().execute(URL);
     }
 
-    private class DownloadImage extends AsyncTask<String, Void, Bitmap> {
+
+    public class DownloadImage extends AsyncTask<String, Void, Bitmap> {
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
@@ -229,7 +244,6 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
                 String line;
                 while ((line = r.readLine()) != null) {
                     total.append(line).append('\n');
-                    System.out.println(line);
                 }
                 Voter.urls = total.toString().split(" ");
 
@@ -253,6 +267,7 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
         @Override
         protected void onPostExecute(Bitmap result) {
             image.setImageBitmap(result);
+            Voter.currentImage = result;
             mProgressDialog.dismiss();
             if(Voter.urlIndex < Voter.urls.length - 1 ){
                 Voter.urlIndex++;
@@ -262,7 +277,7 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
         }
     }
 
-    private class GetUrlContentTask extends AsyncTask<String, Integer, String> {
+    private class UpdateVotes extends AsyncTask<String, Integer, String> {
         protected String doInBackground(String... urls) {
             try {
                 URL url = new URL(urls[0]);
@@ -293,58 +308,9 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
 
         protected void onPostExecute(String result) {
             Voter.overlayImg.setBackgroundResource(R.color.transparent);
-            System.out.println(result);
         }
     }
-
-    private class GetVotes extends AsyncTask<String, Void, String> {
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-        }
-
-        @Override
-        protected String doInBackground(String... URL) {
-            String line = "";
-            try {
-                URL url = new URL("http://medicinina.me/augmented/GetVotesData.php");
-                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
-                mUrlConnection.setDoInput(true);
-                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
-                BufferedReader r = new BufferedReader(new InputStreamReader(is));
-                StringBuilder total = new StringBuilder();
-                while ((line = r.readLine()) != null) {
-                    total.append(line).append('\n');
-                    System.out.println(line);
-                }
-                Voter.votes = total.toString().split(" ");
-                System.out.println("TEST");
-                System.out.println(votes.length);
-                String total2 = total.substring(1, total.length()-1);
-                total2 = total2.replace("},{", "}@{" );
-                Voter.votes = total2.split("@");
-                for(int i = 0; i< votes.length; i++) {
-                    System.out.println(votes[i]);
-                }
-                JSONObject obj = new JSONObject();
-                for(int i = 0; i< votes.length; i++) {
-                    obj = new JSONObject(votes[i]);
-                    System.out.println(obj.getString("confidence"));
-                }
-
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-
-            return line;
-        }
-    }
-
-    private class GetSpecific extends AsyncTask<String, Void, String> {
+    private class getPercentOfFakes extends AsyncTask<String, Void, String> {
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
@@ -362,14 +328,9 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
                 StringBuilder total = new StringBuilder();
                 while ((line = r.readLine()) != null) {
                     total.append(line).append('\n');
-                    System.out.println(line);
+                    Voter.percentOfFakes = ((int) Float.parseFloat(line));
+                    Voter.percentOfReals = 100 - percentOfFakes;
                 }
-                Voter.votes = total.toString().split(" ");
-                System.out.println("TEST");
-                // String total2 = total.substring(1, total.length()-1);
-                // total2 = total2.replace("},{", "}@{" );
-                // Voter.votes = total2.split("@");
-
             } catch (MalformedURLException e) {
                 e.printStackTrace();
             } catch (IOException e) {
@@ -377,6 +338,132 @@ public class Voter extends Activity implements View.OnTouchListener, ResultFragm
             }
 
             return line;
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            super.onPostExecute(s);
+            showFragment();
+        }
+    }
+
+    private class getConfidenceOfFakes extends AsyncTask<String, Void, String> {
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+        }
+
+        @Override
+        protected String doInBackground(String... URL) {
+            String line = "";
+            try {
+                URL url = new URL(URL[0]);
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                    Voter.fakeConfidencePercent = ((int) Float.parseFloat(line));
+                    if(line == "" || line == null) {
+                        Voter.fakeConfidencePercent = 0;
+                    }
+                }
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if(Voter.fakeConfidencePercent == -1){
+                Voter.fakeConfidencePercent = 0;
+            }
+            return line;
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            super.onPostExecute(s);
+            showFragment();
+        }
+    }
+
+    private class getConfidenceOfReals extends AsyncTask<String, Void, String> {
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+        }
+
+        @Override
+        protected String doInBackground(String... URL) {
+            String line = "";
+            try {
+                URL url = new URL(URL[0]);
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                    Voter.realConfidencePercent = ((int) Float.parseFloat(line));
+                    if(line == "" || line == null) {
+                        Voter.fakeConfidencePercent = 0;
+                    }
+                }
+
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if(Voter.fakeConfidencePercent == -1){
+                Voter.fakeConfidencePercent = 0;
+            }
+            return line;
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            super.onPostExecute(s);
+            showFragment();
+        }
+    }
+
+    private class checkImageReal extends AsyncTask<String, Void, String> {
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+        }
+
+        @Override
+        protected String doInBackground(String... URL) {
+            String line = "";
+            try {
+                URL url = new URL(URL[0]);
+                HttpURLConnection mUrlConnection = (HttpURLConnection) url.openConnection();
+                mUrlConnection.setDoInput(true);
+                InputStream is = new BufferedInputStream(mUrlConnection.getInputStream());
+                BufferedReader r = new BufferedReader(new InputStreamReader(is));
+                StringBuilder total = new StringBuilder();
+                while ((line = r.readLine()) != null) {
+                    total.append(line).append('\n');
+                    Voter.isActuallyReal = Integer.parseInt(line);
+                }
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            return line;
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            super.onPostExecute(s);
+            showFragment();
         }
     }
 
